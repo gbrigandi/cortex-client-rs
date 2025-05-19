@@ -7,7 +7,7 @@ license = "MIT"
 edition = "2021"
 repository = "https://github.com/gbrigandi/cortex-client-rs"
 homepage = "https://github.com/gbrigandi/cortex-client-rs"
-documentation = "https://docs.rs/cortex-client-rs"
+documentation = "https://docs.rs/cortex-client"
 keywords = ["cortex", "api", "security", "threatintelligence", "soc"]
 categories = ["api-bindings", "web-programming::http-client", "asynchronous"]
 
