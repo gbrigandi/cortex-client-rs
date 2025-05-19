@@ -1,0 +1,2890 @@
+openapi: 3.0.0
+info:
+  title: Cortex API
+  version: "3.1.8" # Placeholder, replace with actual Cortex version
+  description: API for Cortex, a powerful observable analysis and active response engine.
+servers:
+  - url: /api # Assuming API base path
+    description: Cortex API Server
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+          description: The type of error.
+        message:
+          type: string
+          description: A human-readable error message.
+
+    Fields: # A generic Play Framework Fields object, typically a JSON object.
+      type: object
+      additionalProperties: true
+      description: A flexible object for sending various fields. Structure depends on the specific endpoint.
+
+    ConfigurationDefinitionItem:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [text, string, number, boolean]
+          description: Data type of the configuration item.
+        multi:
+          type: boolean
+        required:
+          type: boolean
+        defaultValue:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: "null"
+          description: Default value for the configuration item.
+
+    WorkerConfig_Json:
+      type: object
+      description: Arbitrary JSON object representing a worker's specific configuration.
+      additionalProperties: true
+
+    BaseConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        workers: # Corresponds to workerNames in the model
+          type: array
+          items:
+            type: string
+        configurationItems: # Corresponds to items in the model
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationDefinitionItem'
+        config:
+          $ref: '#/components/schemas/WorkerConfig_Json'
+          nullable: true
+          description: The actual configuration values for this BaseConfig.
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+          format: int64
+
+    Worker: # Represents an Analyzer or Responder instance
+      type: object
+      properties:
+        _id:
+          type: string
+          description: The unique ID of the worker (analyzer/responder).
+        name:
+          type: string
+        version:
+          type: string
+        workerDefinitionId:
+          type: string
+          description: ID of the definition this worker is based on.
+        description:
+          type: string
+        author:
+          type: string
+        url:
+          type: string
+        license:
+          type: string
+        command:
+          type: string
+          nullable: true
+          description: Command to execute for process-based workers.
+        dockerImage:
+          type: string
+          nullable: true
+          description: Docker image for containerized workers.
+        dataTypeList:
+          type: array
+          items:
+            type: string
+          description: List of data types this worker can process.
+        configuration: # This is a string in the model, but often parsed to JSON in responses
+          oneOf:
+            - type: string
+              description: Raw JSON string of the worker's specific configuration.
+            - type: object
+              additionalProperties: true
+              description: Parsed JSON object of the worker's specific configuration (typically for admin views).
+        baseConfig:
+          type: string
+          description: Key for the base configuration.
+        rate:
+          type: number
+          format: int64 # Assuming long
+          nullable: true
+        rateUnit:
+          type: string
+          enum: [Second, Minute, Hour, Day, Month]
+          nullable: true
+        jobCache:
+          type: number
+          format: int64 # Assuming long representing minutes
+          nullable: true
+        jobTimeout:
+          type: number
+          format: int64 # Assuming long representing minutes
+          nullable: true
+        type:
+          type: string
+          enum: [analyzer, responder]
+        analyzerDefinitionId: # Conditionally present for analyzers in AnalyzerCtrl output
+            type: string
+        # ResponderCtrl specific fields (added via responderJson method)
+        maxTlp:
+          type: number
+          format: int64
+          nullable: true
+        maxPap:
+          type: number
+          format: int64
+          nullable: true
+      description: Represents an Analyzer or Responder. The 'configuration' field's structure depends on the specific worker and admin privileges.
+
+    WorkerDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        dataTypeList:
+          type: array
+          items:
+            type: string
+        author:
+          type: string
+        url:
+          type: string
+        license:
+          type: string
+        baseConfig: # Corresponds to baseConfiguration in the model
+          type: string
+          nullable: true
+        configurationItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationDefinitionItem'
+        dockerImage:
+          type: string
+          nullable: true
+        command: # Filename string from the model
+          type: string
+          nullable: true
+
+    QueryDef:
+      type: object
+      description: Elastic4Play Query Definition Language object for searches.
+      additionalProperties: true
+
+    AggDef:
+      type: object
+      description: Elastic4Play Aggregation Definition Language object for stats.
+      additionalProperties: true
+
+    AnalyzerConfigUpdateRequest:
+      type: object
+      required:
+        - config
+      properties:
+        config:
+          $ref: '#/components/schemas/WorkerConfig_Json'
+
+    AnalyzerFindRequest:
+      type: object
+      properties:
+        query:
+          $ref: '#/components/schemas/QueryDef'
+        range:
+          type: string
+          example: "0-10"
+          description: Pagination range, e.g., "0-10".
+        sort:
+          type: array
+          items:
+            type: string
+          example: ["-createdAt", "name"]
+          description: Sort order for results. Prefix with '-' for descending.
+
+    AnalyzerCreateRequest:
+      type: object
+      description: "Fields for creating an analyzer. Specific properties depend on the analyzer's definition and its configurationItems."
+      properties:
+        name: # Generally required
+          type: string
+        configuration:
+          $ref: '#/components/schemas/WorkerConfig_Json'
+        dataTypeList: # Optional, may default from definition
+          type: array
+          items:
+            type: string
+      # Other fields may be required based on the specific analyzer definition.
+      additionalProperties: true
+
+    AnalyzerUpdateRequest:
+      type: object
+      description: "Fields for updating an analyzer. Specific properties depend on the analyzer's definition."
+      additionalProperties: true # Allows for various configuration fields
+
+    LoginRequest:
+      type: object
+      required:
+        - user
+        - password
+      properties:
+        user:
+          type: string
+        password:
+          type: string
+          format: password
+
+    AuthContext:
+      type: object
+      properties:
+        userId:
+          type: string
+        userName:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        # Other fields like organization, authMethod might be present
+        apiKey: # If applicable from API key auth
+          type: string
+          nullable: true
+      description: Authentication context for the logged-in user.
+
+    DBListAddItemRequest:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: object # JsValue, can be any JSON
+          additionalProperties: true
+          description: The JSON value to add to the list.
+
+    DBListItemExistsRequest:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+        value:
+          type: object # JsValue
+          additionalProperties: true
+          description: The JSON value to check.
+
+    DBListItemExistsResponse:
+      type: object
+      properties:
+        found:
+          type: boolean
+
+    Job:
+      type: object
+      properties:
+        _id:
+          type: string
+        workerDefinitionId:
+          type: string
+        workerId:
+          type: string
+        workerName:
+          type: string
+        organization:
+          type: string
+        status:
+          type: string
+          enum: [Waiting, InProgress, Success, Failure, Deleted]
+        startDate:
+          type: integer
+          format: int64
+          nullable: true
+        endDate:
+          type: integer
+          format: int64
+          nullable: true
+        dataType:
+          type: string
+        data: # Can be raw string or parsed JSON for responder jobs
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+          nullable: true
+        attachment:
+          $ref: '#/components/schemas/Attachment'
+          nullable: true
+        tlp:
+          type: integer
+          format: int64
+        pap:
+          type: integer
+          format: int64
+        message:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        parameters: # Parsed from string to JsObject in toJson
+          type: object
+          additionalProperties: true
+        input: # Parsed from string to JsObject in toJson
+          type: object
+          additionalProperties: true
+          nullable: true
+        fromCache:
+          type: boolean
+          nullable: true
+        type:
+          type: string
+          enum: [analyzer, responder]
+        label:
+          type: string
+          nullable: true
+        cacheTag:
+          type: string
+          nullable: true
+        # Fields added by toJson in Job model
+        analyzerId: # alias for workerId
+          type: string
+        analyzerName: # alias for workerName
+          type: string
+        analyzerDefinitionId: # alias for workerDefinitionId
+          type: string
+        date: # alias for createdAt
+          type: integer
+          format: int64
+      # Note: `createdAt`, `updatedAt` are common from BaseModel but not explicitly listed here.
+
+    Artifact:
+      type: object
+      properties:
+        _id:
+          type: string
+        dataType:
+          type: string
+        data:
+          type: string # Raw format, could be JSON string or other
+          nullable: true
+        attachment:
+          $ref: '#/components/schemas/Attachment'
+          nullable: true
+        tlp:
+          type: integer
+          format: int64
+        tags:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+          nullable: true
+      # Note: `createdAt`, `updatedAt` are common from BaseModel.
+
+    JobReportResponse:
+      type: object
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+          description: Parsed JSON from report.summary()
+        full:
+          type: object
+          additionalProperties: true
+          description: Parsed JSON from report.full()
+        success:
+          type: boolean
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact' # Simplified, structure varies in JobCtrl
+        operations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Parsed JSON from report.operations()
+        errorMessage: # if success is false
+          type: string
+          nullable: true
+        input: # if success is false
+          type: object
+          additionalProperties: true
+          nullable: true
+        # "Running", "Waiting", "Deleted" can also be string responses for the 'report' field
+      oneOf: # To handle cases where report is a simple string
+        - type: object # The main structure defined above
+        - type: string
+          enum: [Running, Waiting, Deleted]
+          description: Status string if job is not completed or failed.
+
+    JobCreateRequest: # For both analyzer and responder
+      type: object
+      properties:
+        data: # Can be string or file upload (multipart/form-data not well described here)
+          type: string
+          description: "Observable data (e.g. IP, domain) or stringified JSON for responders. For files, use multipart/form-data with an 'attachment' part."
+        dataType:
+          type: string
+          description: "Type of the observable data (e.g. 'ip', 'file')."
+        tlp:
+          type: integer
+          format: int64
+          default: 2
+        pap:
+          type: integer
+          format: int64
+          default: 2
+        message:
+          type: string
+          nullable: true
+        parameters:
+          type: object
+          additionalProperties: true
+          description: "Custom parameters for the worker."
+          default: {}
+        label:
+          type: string
+          nullable: true
+        force:
+          type: boolean
+          default: false
+          description: "Force running the job even if a similar recent job exists in cache."
+        # For legacy Cortex 1 compatibility, 'attributes' field might be used.
+        attributes:
+          type: object
+          additionalProperties: true
+          description: "(Legacy) Contains dataType, tlp, and other parameters."
+      # If dataType is 'file', an 'attachment' part is expected in multipart/form-data
+      # This is hard to represent perfectly in OpenAPI for a single schema with 'FieldsBodyParser'.
+      # Consumers should check controller logic for exact 'Fields' key expectations.
+
+    JobStatusRequest:
+      type: object
+      properties:
+        jobIds:
+          type: array
+          items:
+            type: string
+          description: A list of job IDs to get the status for.
+      required:
+        - jobIds
+
+    JobStatusResponse:
+      type: object
+      additionalProperties:
+        type: string
+        description: The status of the job (e.g., "Success", "InProgress", "NotFound").
+      example:
+        jobId1: "Success"
+        jobId2: "InProgress"
+
+    MispModule:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          example: "cortex"
+        mispattributes:
+          type: object
+          properties:
+            input:
+              type: array
+              items:
+                type: string
+            output:
+              type: array
+              items:
+                type: string
+        meta:
+          type: object
+          properties:
+            module-type:
+              type: array
+              items:
+                type: string
+            description:
+              type: string
+            author:
+              type: string
+            version:
+              type: string
+            config:
+              type: array
+              items:
+                type: string # Or could be more complex objects
+      description: Structure of a MISP module as returned by Cortex.
+
+    MispQueryRequest:
+      type: object
+      required:
+        - module
+      properties:
+        module:
+          type: string
+          description: The name of the Cortex analyzer/module to query.
+      additionalProperties: # This will contain the mispType: data pair
+        type: string
+      example:
+        module: "VirusTotal_GetReport_3_0"
+        ip: "8.8.8.8"
+
+    MispQueryResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object # Structure varies based on MISP attribute types
+            properties:
+              types:
+                type: array
+                items:
+                  type: string
+              values:
+                type: array
+                items:
+                  type: string # Or other JSON values
+      description: Results from a MISP module query.
+
+    Organization:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Organization ID (same as name).
+        name:
+          type: string
+          description: Organization name.
+        description:
+          type: string
+        status:
+          type: string
+          enum: [Active, Locked]
+        # Stats are added if requested
+        stats:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: "Statistics related to the organization (e.g., user counts, worker counts)."
+      # Note: `createdAt`, `updatedAt` are common from BaseModel.
+
+    OrganizationCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [Active, Locked]
+          default: Active
+
+    OrganizationUpdateRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        status:
+          type: string
+          enum: [Active, Locked]
+
+    OrganizationFindRequest:
+      type: object
+      properties:
+        query:
+          $ref: '#/components/schemas/QueryDef'
+        range:
+          type: string
+        sort:
+          type: array
+          items:
+            type: string
+        nstats:
+          type: boolean
+          default: false
+          description: Whether to include statistics in the response.
+
+    OrganizationStatsRequest:
+      type: object
+      required:
+        - stats
+      properties:
+        query:
+          $ref: '#/components/schemas/QueryDef'
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/AggDef'
+          description: Aggregation definitions.
+
+    ResponderConfigUpdateRequest:
+      type: object
+      required:
+        - config
+      properties:
+        config:
+          $ref: '#/components/schemas/WorkerConfig_Json'
+
+    ResponderFindRequest:
+      type: object
+      properties:
+        query:
+          $ref: '#/components/schemas/QueryDef'
+        range:
+          type: string
+        sort:
+          type: array
+          items:
+            type: string
+
+    ResponderCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        configuration:
+          $ref: '#/components/schemas/WorkerConfig_Json'
+        dataTypeList:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+
+    ResponderUpdateRequest:
+      type: object
+      additionalProperties: true
+
+    StatusResponse:
+      type: object
+      properties:
+        versions:
+          type: object
+          properties:
+            Cortex:
+              type: string
+            Elastic4Play:
+              type: string
+            Play:
+              type: string
+            Elastic4s:
+              type: string
+            "ElasticSearch client":
+              type: string
+        config:
+          type: object
+          properties:
+            protectDownloadsWith:
+              type: string
+            authType:
+              oneOf:
+                - type: string
+                - type: array
+                  items:
+                    type: string
+            capabilities:
+              type: array
+              items:
+                type: string
+            ssoAutoLogin:
+              type: boolean
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN] # Example, actual might vary
+
+    StreamMessagesResponse:
+      type: object
+      properties:
+        operations:
+          type: array
+          items:
+            type: object # Structure of a stream message (e.g., audit log)
+            additionalProperties: true
+      description: Messages from a stream.
+
+    StreamStatusResponse:
+      type: object
+      properties:
+        remaining:
+          type: integer
+          format: int64
+          description: Remaining time in seconds for the session/token.
+        warning:
+          type: boolean
+          description: Whether a warning state is active (e.g., session about to expire).
+
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: User ID (same as login).
+        login:
+          type: string
+        name:
+          type: string
+          description: Full name.
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [read, analyze, orgadmin, superadmin]
+        status:
+          type: string
+          enum: [Ok, Locked]
+        avatar:
+          type: string # Base64 encoded image
+          nullable: true
+        preferences:
+          type: object
+          additionalProperties: true
+          description: User preferences as a JSON object.
+        organization:
+          type: string
+        hasKey:
+          type: boolean
+          description: Indicates if the user has an API key.
+        hasPassword:
+          type: boolean
+          description: Indicates if the user has a password set.
+      # Note: `createdAt`, `updatedAt` are common from BaseModel. `key` and `password` are sensitive and not directly returned.
+
+    UserCreateRequest:
+      type: object
+      required:
+        - login
+      properties:
+        login:
+          type: string
+        name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [read, analyze, orgadmin, superadmin]
+        organization:
+          type: string
+        password:
+          type: string
+          format: password
+          nullable: true
+        status:
+          type: string
+          enum: [Ok, Locked]
+          default: Ok
+        preferences:
+          type: object
+          additionalProperties: true
+          default: {}
+        avatar:
+          type: string
+          nullable: true
+          description: Base64 representation of user avatar image.
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [read, analyze, orgadmin, superadmin]
+        status:
+          type: string
+          enum: [Ok, Locked]
+        organization:
+          type: string
+        preferences:
+          type: object
+          additionalProperties: true
+        avatar:
+          type: string
+          nullable: true
+          description: Base64 representation of user avatar image.
+
+    PasswordSetRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+
+    PasswordChangeRequest:
+      type: object
+      required:
+        - password
+        - currentPassword
+      properties:
+        password:
+          type: string
+          format: password
+        currentPassword:
+          type: string
+          format: password
+
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: PLAY_SESSION # Default Play session cookie name
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: API key authentication (e.g., provided as a Bearer token).
+  # --- Reusable Responses ---
+  responses:
+    UnauthorizedError:
+      description: Unauthorized - Authentication credentials are required and are missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: Forbidden - You do not have the necessary permissions for this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: Not Found - The requested resource could not be found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequestError:
+      description: Bad Request - The request was malformed or contained invalid parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequestsError:
+      description: Too Many Requests - Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error' # Type: RateLimitExceeded
+
+security:
+  - SessionAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  # --- AnalyzerConfigCtrl ---
+  /analyzer/config:
+    get:
+      summary: List all analyzer configurations for the user
+      operationId: listAnalyzerConfigurations
+      tags:
+        - AnalyzerConfig
+      responses:
+        '200':
+          description: A list of analyzer configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BaseConfig'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  /analyzer/config/{analyzerConfigName}:
+    parameters:
+      - name: analyzerConfigName
+        in: path
+        required: true
+        description: The name of the analyzer configuration
+        schema:
+          type: string
+    get:
+      summary: Get a specific analyzer configuration
+      operationId: getAnalyzerConfiguration
+      tags:
+        - AnalyzerConfig
+      responses:
+        '200':
+          description: The analyzer configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaseConfig'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+    put:
+      summary: Update or create an analyzer configuration
+      operationId: updateAnalyzerConfiguration
+      tags:
+        - AnalyzerConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerConfigUpdateRequest'
+      responses:
+        '200':
+          description: The updated or created analyzer configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaseConfig'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  # --- AnalyzerCtrl ---
+  /analyzer/_search:
+    post:
+      summary: Find/Search analyzers
+      operationId: findAnalyzers
+      tags:
+        - Analyzer
+      requestBody:
+        required: false # Based on controller logic, body can be empty for "any" query
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFindRequest'
+      responses:
+        '200':
+          description: A list of analyzers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Worker'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /analyzer/{analyzerId}:
+    parameters:
+      - name: analyzerId
+        in: path
+        required: true
+        description: The ID of the analyzer
+        schema:
+          type: string
+    get:
+      summary: Get a specific analyzer by ID
+      operationId: getAnalyzerById
+      tags:
+        - Analyzer
+      responses:
+        '200':
+          description: The analyzer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - read
+    put:
+      summary: Update an analyzer
+      operationId: updateAnalyzer
+      tags:
+        - Analyzer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerUpdateRequest' # Effectively 'Fields'
+      responses:
+        '200':
+          description: The updated analyzer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker' # Response uses isAdmin=true
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+    delete:
+      summary: Delete an analyzer
+      operationId: deleteAnalyzer
+      tags:
+        - Analyzer
+      responses:
+        '204':
+          description: Analyzer deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /analyzer/definition/{analyzerDefinitionId}:
+    post:
+      summary: Create a new analyzer instance from a definition
+      operationId: createAnalyzerFromDefinition
+      tags:
+        - Analyzer
+      parameters:
+        - name: analyzerDefinitionId
+          in: path
+          required: true
+          description: The ID of the analyzer definition to use for creation.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerCreateRequest' # Effectively 'Fields'
+      responses:
+        '201':
+          description: Analyzer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker' # Response uses isAdmin=false
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  /analyzer/definition:
+    get:
+      summary: List all available analyzer definitions
+      operationId: listAnalyzerDefinitions
+      tags:
+        - Analyzer
+      responses:
+        '200':
+          description: A list of analyzer definitions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkerDefinition'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /analyzer/scan:
+    post:
+      summary: Trigger a rescan of analyzer definitions
+      operationId: scanAnalyzerDefinitions
+      tags:
+        - Analyzer
+      responses:
+        '204':
+          description: Analyzer rescan initiated successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /analyzer/type/{dataType}:
+    get:
+      summary: List analyzers available for a specific data type
+      operationId: listAnalyzersForType
+      tags:
+        - Analyzer
+      parameters:
+        - name: dataType
+          in: path
+          required: true
+          description: The data type to filter analyzers by (e.g., ip, domain, file).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of analyzers supporting the data type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Worker' # Response uses isAdmin=false
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  # --- AttachmentCtrl ---
+  /attachment/{hash}:
+    get:
+      summary: Download an attachment in plain format
+      operationId: downloadAttachment
+      tags:
+        - Attachment
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: The hash of the attachment.
+          schema:
+            type: string
+        - name: name
+          in: query
+          required: false
+          description: Desired filename for the download.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The attachment file.
+          content:
+            application/octet-stream: # Or more specific based on attachment.contentType
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: No content (e.g. if hash is an AngularJS expression).
+        '400':
+          $ref: '#/components/responses/BadRequestError' # If filename is invalid
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /attachment/{hash}/zip:
+    get:
+      summary: Download an attachment in a password-protected zip file
+      operationId: downloadAttachmentZip
+      tags:
+        - Attachment
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: The hash of the attachment.
+          schema:
+            type: string
+        - name: name
+          in: query
+          required: false
+          description: Desired filename for the item within the zip.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The zipped attachment file.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequestError' # If filename is invalid
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  # --- AuthenticationCtrl ---
+  /login:
+    post:
+      summary: Log in to Cortex
+      operationId: login
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successfully authenticated. Session cookie is set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthContext'
+        '400':
+          $ref: '#/components/responses/BadRequestError' # For MissingAttributeError
+        '401':
+          $ref: '#/components/responses/UnauthorizedError' # For AuthenticationError
+        '520':
+          description: Database index not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      # No x-cortex-roles as it's a public endpoint
+
+  /ssoLogin: # Actual path might vary based on SSO configuration and routes
+    get:
+      summary: Initiate or handle SSO login
+      operationId: ssoLogin
+      tags:
+        - Authentication
+      responses:
+        '302':
+          description: Redirect to SSO provider or back to application. Session cookie is set on success.
+        '200': # If SSO provider returns directly with AuthContext
+          description: Successfully authenticated via SSO.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthContext'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError' # For AuthorizationError (account locked)
+        '520':
+          description: Database index not ready.
+      # No x-cortex-roles as it's a public endpoint
+
+  /logout:
+    post: # Using POST for logout is generally safer
+      summary: Log out from Cortex
+      operationId: logout
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Successfully logged out. Session is cleared.
+          # No content body typically, or a simple success message
+      # x-cortex-roles: implicitly authenticated user
+
+  # --- DBListCtrl ---
+  /dblist:
+    get:
+      summary: List all DBList names
+      operationId: listDBLists
+      tags:
+        - DBList
+      responses:
+        '200':
+          description: A list of DBList names.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /dblist/{listName}/items:
+    get:
+      summary: List items from a specific DBList
+      operationId: listDBListItems
+      tags:
+        - DBList
+      parameters:
+        - name: listName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Streamed JSON object of items.
+          content:
+            application/json: # Chunked response
+              schema:
+                type: object
+                additionalProperties: true # Represents JsValue
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+    post:
+      summary: Add an item to a DBList
+      operationId: addDBListItem
+      tags:
+        - DBList
+      parameters:
+        - name: listName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DBListAddItemRequest'
+      responses:
+        '200':
+          description: The ID of the added item.
+          content:
+            application/json: # Actually text/plain in controller, but ID is simple string
+              schema:
+                type: string
+        '204':
+          description: No content (if value is missing, though controller implies error).
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  /dblist/items/{itemId}:
+    delete:
+      summary: Delete an item from a DBList
+      operationId: deleteDBListItem
+      tags:
+        - DBList
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Item deleted successfully.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+    put:
+      summary: Update an item in a DBList
+      operationId: updateDBListItem
+      tags:
+        - DBList
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DBListAddItemRequest' # Same as add, value field
+      responses:
+        '200':
+          description: The ID of the updated (new) item.
+          content:
+            application/json: # Actually text/plain
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Missing value
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  /dblist/{listName}/exists:
+    post:
+      summary: Check if an item exists in a DBList
+      operationId: checkDBListItemExists
+      tags:
+        - DBList
+      parameters:
+        - name: listName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DBListItemExistsRequest'
+      responses:
+        '200':
+          description: Result of the existence check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DBListItemExistsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Missing key/value
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  # --- JobCtrl ---
+  /job:
+    get:
+      summary: List jobs for the user with optional filters
+      operationId: listJobs
+      tags:
+        - Job
+      parameters:
+        - name: dataTypeFilter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: dataFilter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: workerFilter # analyzerFilter in controller param name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "0-10"
+      responses:
+        '200':
+          description: A list of jobs and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /job/_search:
+    post:
+      summary: Find/Search jobs
+      operationId: findJobs
+      tags:
+        - Job
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFindRequest' # Reusing, similar structure
+      responses:
+        '200':
+          description: A list of jobs and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /job/{jobId}:
+    get:
+      summary: Get a specific job by ID
+      operationId: getJobById
+      tags:
+        - Job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The job details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - read
+    delete:
+      summary: Delete a job
+      operationId: deleteJob
+      tags:
+        - Job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Job deleted successfully.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - analyze
+        - orgAdmin
+
+  /analyzer/{workerId}/run: # Path inferred
+    post:
+      summary: Create and run an analyzer job
+      operationId: createAnalyzerJob
+      tags:
+        - Job
+      parameters:
+        - name: workerId
+          in: path
+          required: true
+          description: ID of the analyzer worker.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json: # For 'Fields' which can be JSON
+            schema:
+              $ref: '#/components/schemas/JobCreateRequest'
+          # multipart/form-data: # If file uploads are handled via 'Fields'
+          #   schema:
+          #     $ref: '#/components/schemas/JobCreateRequest' # Plus 'attachment' part
+      responses:
+        '200': # Controller uses OK, could be 201 or 202 for job creation
+          description: Job created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError' # If worker not found
+      x-cortex-roles:
+        - analyze
+
+  /responder/{workerId}/run: # Path inferred
+    post:
+      summary: Create and run a responder job
+      operationId: createResponderJob
+      tags:
+        - Job
+      parameters:
+        - name: workerId
+          in: path
+          required: true
+          description: ID of the responder worker.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobCreateRequest'
+      responses:
+        '200':
+          description: Job created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError' # If worker not found
+      x-cortex-roles:
+        - analyze
+
+  /job/{jobId}/report:
+    get:
+      summary: Get the report for a job
+      operationId: getJobReport
+      tags:
+        - Job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The job report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobReportResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - read
+
+  /job/{jobId}/waitReport:
+    get:
+      summary: Wait for and get the report for a job
+      operationId: waitJobReport
+      tags:
+        - Job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: atMost
+          in: query
+          required: true
+          description: Maximum duration to wait (e.g., "5minutes", "30s").
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The job report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobReportResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - read
+
+  /job/status:
+    post:
+      summary: Get the status of multiple jobs
+      operationId: getJobsStatus
+      tags:
+        - Job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobStatusRequest'
+      responses:
+        '200':
+          description: A map of job IDs to their statuses.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /job/{jobId}/artifacts/_search:
+    post:
+      summary: List/Search artifacts for a job
+      operationId: listJobArtifacts
+      tags:
+        - Job
+        - Artifact
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFindRequest' # Reusing for query, range, sort
+      responses:
+        '200':
+          description: A list of artifacts and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Artifact'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  # --- MispCtrl ---
+  /misp/modules:
+    post: # Controller uses fieldsBodyParser, though body might not be used
+      summary: List available MISP modules (Cortex analyzers)
+      operationId: listMispModules
+      tags:
+        - MISP
+      requestBody: # Even if unused, API might expect empty JSON object
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Fields'
+      responses:
+        '200':
+          description: A list of MISP modules and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MispModule'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /misp/query:
+    post:
+      summary: Query a MISP module (Cortex analyzer)
+      operationId: queryMispModule
+      tags:
+        - MISP
+      requestBody:
+        required: true
+        content:
+          application/json: # JsValue in controller, specific structure
+            schema:
+              $ref: '#/components/schemas/MispQueryRequest'
+      responses:
+        '200':
+          description: Results from the MISP module query.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MispQueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError' # If module not found
+      x-cortex-roles:
+        - analyze
+
+  # --- OrganizationCtrl ---
+  /organization:
+    post:
+      summary: Create a new organization
+      operationId: createOrganization
+      tags:
+        - Organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreateRequest'
+      responses:
+        '201':
+          description: Organization created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  /organization/{organizationId}:
+    get: # Changed from POST to GET with query param for nstats
+      summary: Get a specific organization by ID
+      operationId: getOrganizationById
+      tags:
+        - Organization
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: nstats
+          in: query
+          required: false
+          description: Whether to include statistics.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The organization details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - superAdmin
+        - orgAdmin # With check for own organization
+    put:
+      summary: Update an organization
+      operationId: updateOrganization
+      tags:
+        - Organization
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationUpdateRequest'
+      responses:
+        '200':
+          description: The updated organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequestError' # e.g. updating 'cortex' org
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - superAdmin
+    delete:
+      summary: Delete an organization
+      operationId: deleteOrganization
+      tags:
+        - Organization
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Organization deleted successfully.
+        '400':
+          $ref: '#/components/responses/BadRequestError' # e.g. deleting 'cortex' org
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - superAdmin
+
+  /organization/_search:
+    post:
+      summary: Find/Search organizations
+      operationId: findOrganizations
+      tags:
+        - Organization
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationFindRequest'
+      responses:
+        '200':
+          description: A list of organizations and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  /organization/_stats:
+    post:
+      summary: Get statistics for organizations
+      operationId: getOrganizationStats
+      tags:
+        - Organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationStatsRequest'
+      responses:
+        '200':
+          description: Aggregation results.
+          content:
+            application/json: # JsObject
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Missing 'stats' param
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  # --- ResponderConfigCtrl ---
+  /responder/config:
+    get:
+      summary: List all responder configurations for the user
+      operationId: listResponderConfigurations
+      tags:
+        - ResponderConfig
+      responses:
+        '200':
+          description: A list of responder configurations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BaseConfig'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  /responder/config/{responderConfigName}:
+    parameters:
+      - name: responderConfigName
+        in: path
+        required: true
+        description: The name of the responder configuration.
+        schema:
+          type: string
+    get:
+      summary: Get a specific responder configuration
+      operationId: getResponderConfiguration
+      tags:
+        - ResponderConfig
+      responses:
+        '200':
+          description: The responder configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaseConfig'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+    put:
+      summary: Update or create a responder configuration
+      operationId: updateResponderConfiguration
+      tags:
+        - ResponderConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponderConfigUpdateRequest'
+      responses:
+        '200':
+          description: The updated or created responder configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaseConfig'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  # --- ResponderCtrl ---
+  /responder/_search:
+    post:
+      summary: Find/Search responders
+      operationId: findResponders
+      tags:
+        - Responder
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponderFindRequest'
+      responses:
+        '200':
+          description: A list of responders and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Worker' # responderJson applied
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /responder/{responderId}:
+    parameters:
+      - name: responderId
+        in: path
+        required: true
+        description: The ID of the responder.
+        schema:
+          type: string
+    get:
+      summary: Get a specific responder by ID
+      operationId: getResponderById
+      tags:
+        - Responder
+      responses:
+        '200':
+          description: The responder details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker' # responderJson applied
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - read
+    put:
+      summary: Update a responder
+      operationId: updateResponder
+      tags:
+        - Responder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponderUpdateRequest' # Effectively 'Fields'
+      responses:
+        '200':
+          description: The updated responder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker' # responderJson applied
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+    delete:
+      summary: Delete a responder
+      operationId: deleteResponder
+      tags:
+        - Responder
+      responses:
+        '204':
+          description: Responder deleted successfully.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /responder/definition/{responderDefinitionId}:
+    post:
+      summary: Create a new responder instance from a definition
+      operationId: createResponderFromDefinition
+      tags:
+        - Responder
+      parameters:
+        - name: responderDefinitionId
+          in: path
+          required: true
+          description: The ID of the responder definition.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponderCreateRequest' # Effectively 'Fields'
+      responses:
+        '201':
+          description: Responder created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker' # responderJson applied
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+
+  /responder/definition:
+    get:
+      summary: List all available responder definitions
+      operationId: listResponderDefinitions
+      tags:
+        - Responder
+      responses:
+        '200':
+          description: A list of responder definitions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkerDefinition'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /responder/scan:
+    post:
+      summary: Trigger a rescan of responder definitions
+      operationId: scanResponderDefinitions
+      tags:
+        - Responder
+      responses:
+        '204':
+          description: Responder rescan initiated successfully.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /responder/type/{dataType}:
+    get:
+      summary: List responders available for a specific data type
+      operationId: listRespondersForType
+      tags:
+        - Responder
+      parameters:
+        - name: dataType
+          in: path
+          required: true
+          description: The data type to filter responders by.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of responders supporting the data type.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Worker' # responderJson applied
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  # --- StatusCtrl ---
+  /status:
+    get:
+      summary: Get system status and configuration information
+      operationId: getStatus
+      tags:
+        - Status
+      responses:
+        '200':
+          description: System status and configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+      # No x-cortex-roles as it's public
+
+  /status/alerts:
+    get:
+      summary: Get system alerts
+      operationId: getStatusAlerts
+      tags:
+        - Status
+      responses:
+        '200':
+          description: A list of active alerts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /status/health: # Endpoint is TODO in code
+    get:
+      summary: Get system health status
+      operationId: getHealthStatus
+      tags:
+        - Status
+      responses:
+        '200':
+          description: System health status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+      # No x-cortex-roles as it's public
+
+  # --- StreamCtrl ---
+  /stream:
+    post:
+      summary: Create a new event stream
+      operationId: createStream
+      tags:
+        - Stream
+      responses:
+        '200':
+          description: The ID of the created stream.
+          content:
+            text/plain: # Controller returns Ok(id) which is text
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - read
+
+  /stream/{id}:
+    get:
+      summary: Get events from a stream
+      operationId: getStreamEvents
+      tags:
+        - Stream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the stream.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of stream messages (operations).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamMessagesResponse'
+        '220': # Custom status from controller
+          description: Expiration warning, messages included.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamMessagesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Invalid stream ID
+        '401':
+          $ref: '#/components/responses/UnauthorizedError' # If auth fails during stream processing
+        '500':
+          $ref: '#/components/responses/InternalServerError' # Unexpected message from actor
+      x-cortex-roles:
+        - read # Effective role after auth checks
+
+  /stream/status:
+    get:
+      summary: Get the status of the current session/token for streaming
+      operationId: getStreamSessionStatus
+      tags:
+        - Stream
+      responses:
+        '200':
+          description: Session/token status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamStatusResponse'
+      # x-cortex-roles: implicitly authenticated
+
+  # --- UserCtrl ---
+  /user:
+    post:
+      summary: Create a new user
+      operationId: createUser
+      tags:
+        - User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError' # AuthorizationError
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /user/current:
+    get:
+      summary: Get the current logged-in user's details
+      operationId: getCurrentUser
+      tags:
+        - User
+      responses:
+        '200':
+          description: Current user details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User' # Includes parsed preferences
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+      # x-cortex-roles: implicitly authenticated
+
+  /user/_search:
+    post:
+      summary: Find/Search users (SuperAdmin only)
+      operationId: findUsers
+      tags:
+        - User
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFindRequest' # Reusing for query, range, sort
+      responses:
+        '200':
+          description: A list of users and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - superAdmin
+
+  /user/organization/{organizationId}/_search:
+    post:
+      summary: Find/Search users within a specific organization
+      operationId: findUsersForOrganization
+      tags:
+        - User
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFindRequest' # Reusing for query, range, sort
+      responses:
+        '200':
+          description: A list of users in the organization and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /user/{userId}:
+    get:
+      summary: Get a specific user by ID
+      operationId: getUserById
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The user details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles: # Complex logic: read for self, superAdmin, orgAdmin for own org users
+        - read # Base, further checks in controller
+    put:
+      summary: Update a user
+      operationId: updateUser
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: The updated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError' # AuthorizationError
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles: # Complex logic: self, orgAdmin, superAdmin with specific field restrictions
+        - read # Base, further checks in controller
+    delete:
+      summary: Delete a user (marks as Locked)
+      operationId: deleteUser
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deleted (locked) successfully.
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Cannot disable own account
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /user/{userId}/password/set:
+    post:
+      summary: Set a user's password (admin)
+      operationId: setUserPassword
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordSetRequest'
+      responses:
+        '204':
+          description: Password set successfully.
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Missing password
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /user/{userId}/password/change:
+    post:
+      summary: Change the current user's password
+      operationId: changeUserPassword
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Must be the ID of the currently authenticated user.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+      responses:
+        '204':
+          description: Password changed successfully.
+        '400':
+          $ref: '#/components/responses/BadRequestError' # Missing password fields
+        '401':
+          $ref: '#/components/responses/UnauthorizedError' # Auth failure (current password wrong)
+        '403':
+          $ref: '#/components/responses/ForbiddenError' # If userId is not self
+      x-cortex-roles: # Authenticated user (self)
+        - read # Base, controller checks userId == authContext.userId
+
+  /user/{userId}/key:
+    get:
+      summary: Get a user's API key
+      operationId: getUserApiKey
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The user's API key.
+          content:
+            text/plain: # Key is returned as plain text
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequestError' # User hasn't key
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError' # AuthorizationError
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles: # Self, orgAdmin, superAdmin with org checks
+        - read # Base, controller checks permissions
+    delete:
+      summary: Remove a user's API key
+      operationId: removeUserApiKey
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key removed successfully.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles:
+        - orgAdmin
+        - superAdmin
+
+  /user/{userId}/key/renew:
+    post:
+      summary: Renew a user's API key
+      operationId: renewUserApiKey
+      tags:
+        - User
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The new API key.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError' # AuthorizationError
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      x-cortex-roles: # Self, orgAdmin, superAdmin with org checks
+        - read # Base, controller checks permissions
+
+
+
