@@ -12,11 +12,11 @@ The Cortex API provides a programmatic interface to its rich set of features, of
 
 ## Adding the Crate to Your Project
 
-To integrate the `cortex-client-rs` into your Rust project, add it as a dependency in your `Cargo.toml` file.
+To integrate the `cortex-client` into your Rust project, add it as a dependency in your `Cargo.toml` file.
 
 ```toml
 [dependencies]
-cortex-client-rs = "0.1" 
+cortex-client = "0.1" 
 ```
 ## Running The Examples from this Repository
 
