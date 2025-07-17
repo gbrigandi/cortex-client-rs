@@ -1,6 +1,6 @@
 [package]
 name = "cortex-client"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Gianluca Brigandi, OpenAPI Generator team and contributors"]
 description = "API for Cortex, a powerful observable analysis and active response engine."
 license = "MIT"
